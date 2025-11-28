@@ -1,223 +1,148 @@
 #include <iostream>
-#include <string>
-#include <vector>
 #include <fstream>
+#include <string>
+#include <stdexcept>
 using namespace std;
 
-// -----------------------------
-// Кастомні винятки
-// -----------------------------
-class FileOpenError {};
-class InvalidDuration {};
-
-// -----------------------------
 // Абстрактний клас
-// -----------------------------
-class AudioContent {
-protected:
+class Playable {
+public:
+    virtual void showInfo() const = 0;   // чисто віртуальний метод
+    virtual void saveToFile(ofstream& fout) const = 0;
+    virtual ~Playable() {}
+};
+
+// Клас Song успадковує Playable
+class Song : public Playable {
+private:
     string title;
-    int duration;
-    static int totalPlays; // статична змінна
-
-public:
-    AudioContent(string t = "", int d = 0) {
-        if (d < 0) throw InvalidDuration();
-        title = t;
-        duration = d;
-    }
-
-    virtual ~AudioContent() {}
-
-    virtual void play() = 0; // поліморфізм
-
-    static int getTotalPlays() {
-        return totalPlays;
-    }
-
-    virtual void saveToFile(ofstream& out) {
-        out << title << endl;
-        out << duration << endl;
-    }
-
-    virtual void loadFromFile(ifstream& in) {
-        getline(in, title);
-        in >> duration;
-        in.ignore();
-    }
-};
-
-int AudioContent::totalPlays = 0;
-
-// -----------------------------
-// Клас Song
-// -----------------------------
-class Song : public AudioContent {
     string artist;
+    int duration;
+    static int songCount;   // статична змінна
 
 public:
-    Song(string t = "", int d = 0, string a = "") 
-        : AudioContent(t, d), artist(a) {}
-
-    void play() override {
-        totalPlays++;
-        cout << "Playing song: " << title 
-             << " by " << artist 
-             << " (" << duration << "s)" << endl;
+    Song(string t, string a, int d) {
+        if (d <= 0) throw invalid_argument("Duration must be positive!");
+        title = t;
+        artist = a;
+        duration = d;
+        songCount++;
     }
 
-    void saveToFile(ofstream& out) override {
-        out << "SONG" << endl;
-        AudioContent::saveToFile(out);
-        out << artist << endl;
+    void showInfo() const override {
+        cout << title << " — " << artist << " (" << duration << " sec)\n";
     }
 
-    void loadFromFile(ifstream& in) override {
-        AudioContent::loadFromFile(in);
-        getline(in, artist);
+    void saveToFile(ofstream& fout) const override {
+        fout << title << "\n" << artist << "\n" << duration << "\n";
+    }
+
+    static int getSongCount() { return songCount; }
+};
+
+int Song::songCount = 0;
+
+class Playlist {
+private:
+    string filename;
+
+public:
+    Playlist(string fn) : filename(fn) {
+        ofstream f(filename, ios::app);
+        if (!f.is_open()) throw runtime_error("Cannot open file!");
+    }
+
+    void addSong(const Song& s) {
+        ofstream fout(filename, ios::app);
+        if (!fout.is_open()) throw runtime_error("Cannot write to file!");
+        s.saveToFile(fout);
+        fout.close();
+        cout << "Song added successfully.\n";
+    }
+
+    void showAll() {
+        ifstream fin(filename);
+        if (!fin.is_open()) throw runtime_error("Cannot read file!");
+
+        string title, artist;
+        int duration;
+        int i = 1;
+        cout << "=== Playlist ===\n";
+        while (getline(fin, title)) {
+            if (title.empty()) continue;
+            getline(fin, artist);
+            fin >> duration;
+            fin.ignore();
+            try {
+                Song s(title, artist, duration);
+                cout << i++ << ". ";
+                s.showInfo(); // поліморфний виклик
+            }
+            catch (exception& e) {
+                cout << "Bad song data: " << e.what() << "\n";
+            }
+        }
+        cout << "Total songs: " << Song::getSongCount() << "\n";
+        fin.close();
     }
 };
 
-// -----------------------------
-// Клас PodcastEpisode
-// -----------------------------
-class PodcastEpisode : public AudioContent {
-    string host;
-
-public:
-    PodcastEpisode(string t = "", int d = 0, string h = "")
-        : AudioContent(t, d), host(h) {}
-
-    void play() override {
-        totalPlays++;
-        cout << "Playing podcast: " << title 
-             << " host " << host 
-             << " (" << duration << "s)" << endl;
-    }
-
-    void saveToFile(ofstream& out) override {
-        out << "PODCAST" << endl;
-        AudioContent::saveToFile(out);
-        out << host << endl;
-    }
-
-    void loadFromFile(ifstream& in) override {
-        AudioContent::loadFromFile(in);
-        getline(in, host);
-    }
-};
-
-// -----------------------------
-// Клас AudioBook
-// -----------------------------
-class AudioBook : public AudioContent {
-    string author;
-
-public:
-    AudioBook(string t = "", int d = 0, string a = "")
-        : AudioContent(t, d), author(a) {}
-
-    void play() override {
-        totalPlays++;
-        cout << "Playing audiobook: " << title 
-             << " by " << author 
-             << " (" << duration << "s)" << endl;
-    }
-
-    void saveToFile(ofstream& out) override {
-        out << "AUDIOBOOK" << endl;
-        AudioContent::saveToFile(out);
-        out << author << endl;
-    }
-
-    void loadFromFile(ifstream& in) override {
-        AudioContent::loadFromFile(in);
-        getline(in, author);
-    }
-};
-
-// -----------------------------
-// Збереження плейліста
-// -----------------------------
-void savePlaylist(vector<AudioContent*>& list, string filename) {
-    ofstream out(filename);
-    if (!out.is_open()) throw FileOpenError();
-
-    for (int i = 0; i < list.size(); i++) {
-        list[i]->saveToFile(out);
-    }
-
-    out.close();
-}
-
-// -----------------------------
-// Завантаження плейліста
-// -----------------------------
-vector<AudioContent*> loadPlaylist(string filename) {
-    ifstream in(filename);
-    if (!in.is_open()) throw FileOpenError();
-
-    vector<AudioContent*> result;
-    string type;
-
-    while (getline(in, type)) {
-        AudioContent* ptr = nullptr;
-
-        if (type == "SONG")
-            ptr = new Song();
-        else if (type == "PODCAST")
-            ptr = new PodcastEpisode();
-        else if (type == "AUDIOBOOK")
-            ptr = new AudioBook();
-        else
-            continue;
-
-        ptr->loadFromFile(in);
-        result.push_back(ptr);
-    }
-
-    in.close();
-    return result;
-}
-
-// -----------------------------
-// Головна програма
-// -----------------------------
+// Основна програма
 int main() {
+    const string filename = "songs.txt";
+
     try {
-        vector<AudioContent*> playlist;
+        Playlist pl(filename);
 
-        playlist.push_back(new Song("Numb", 185, "Linkin Park"));
-        playlist.push_back(new PodcastEpisode("C++ Talk", 1200, "Jason"));
-        playlist.push_back(new AudioBook("The Hobbit", 3600, "Tolkien"));
+        cout << "Choose mode:\n";
+        cout << "1 — Author (add new songs)\n";
+        cout << "2 — Listener (view playlist)\n";
+        cout << "Your choice: ";
 
-        cout << "=== Playing playlist ===" << endl;
-        for (int i = 0; i < playlist.size(); i++)
-            playlist[i]->play();
+        int mode;
+        if (!(cin >> mode)) throw runtime_error("Invalid input!");
+        cin.ignore();
 
-        cout << "\nTotal plays: " << AudioContent::getTotalPlays() << endl;
+        if (mode == 1) {
+            while (true) {
+                string title, artist;
+                int duration;
 
-        savePlaylist(playlist, "playlist.txt");
-        cout << "Playlist saved!\n";
+                cout << "Song title: ";
+                getline(cin, title);
+                cout << "Artist: ";
+                getline(cin, artist);
+                cout << "Duration (sec): ";
+                while (!(cin >> duration)) {
+                    cin.clear();
+                    string bad;
+                    getline(cin, bad);
+                    cout << "Invalid input. Enter duration in seconds: ";
+                }
+                cin.ignore();
 
-        // очистимо
-        for (auto p : playlist) delete p;
-        playlist.clear();
+                Song s(title, artist, duration);
+                pl.addSong(s);
 
-        cout << "\nLoading playlist...\n";
-        playlist = loadPlaylist("playlist.txt");
+                cout << "Add another song? (y/n): ";
+                char c;
+                cin >> c;
+                cin.ignore();
+                if (!(c == 'y' || c == 'Y')) break;
+            }
+        }
+        else if (mode == 2) {
+            pl.showAll();
+        }
+        else {
+            cout << "Invalid option.\n";
+        }
 
-        for (int i = 0; i < playlist.size(); i++)
-            playlist[i]->play();
-
-        cout << "\nTotal plays: " << AudioContent::getTotalPlays() << endl;
-
-        for (auto p : playlist) delete p;
-
-    } catch (FileOpenError) {
-        cout << "File error!" << endl;
-    } catch (InvalidDuration) {
-        cout << "Invalid duration!" << endl;
+        cout << "Program finished.\n";
     }
-
+    catch (exception& e) {
+        cerr << "ERROR: " << e.what() << "\n";
+        return 1;
+    }
     return 0;
 }
