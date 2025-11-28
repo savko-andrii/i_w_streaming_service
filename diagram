@@ -1,8 +1,8 @@
                 +-------------------+
-                |    Playable       |   <<abstract>>
+                |    Playable       |   
                 +-------------------+
-                | + showInfo()      |   // чисто віртуальний метод
-                | + saveToFile()    |   // чисто віртуальний метод
+                | + showInfo()      |   
+                | + saveToFile()    |  
                 +-------------------+
                         ^
                         |
@@ -14,7 +14,7 @@
                 | - title: string   |
                 | - artist: string  |
                 | - duration: int   |
-                | - songCount: int  |   // static
+                | - songCount: int  |   
                 +-------------------+
                 | + Song(...)       |
                 | + showInfo()      |
