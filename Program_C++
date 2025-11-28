@@ -42,7 +42,6 @@ public:
 
 int Song::songCount = 0;
 
-// Клас Playlist
 class Playlist {
 private:
     string filename;
