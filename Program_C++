@@ -4,21 +4,19 @@
 #include <stdexcept>
 using namespace std;
 
-// Абстрактний клас
 class Playable {
 public:
-    virtual void showInfo() const = 0;   // чисто віртуальний метод
+    virtual void showInfo() const = 0;   
     virtual void saveToFile(ofstream& fout) const = 0;
     virtual ~Playable() {}
 };
 
-// Клас Song успадковує Playable
 class Song : public Playable {
 private:
     string title;
     string artist;
     int duration;
-    static int songCount;   // статична змінна
+    static int songCount;  
 
 public:
     Song(string t, string a, int d) {
@@ -76,7 +74,7 @@ public:
             try {
                 Song s(title, artist, duration);
                 cout << i++ << ". ";
-                s.showInfo(); // поліморфний виклик
+                s.showInfo(); //
             }
             catch (exception& e) {
                 cout << "Bad song data: " << e.what() << "\n";
