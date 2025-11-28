@@ -87,7 +87,6 @@ public:
     }
 };
 
-// Основна програма
 int main() {
     const string filename = "songs.txt";
 
