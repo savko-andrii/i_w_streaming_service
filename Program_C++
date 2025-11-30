@@ -1,91 +1,134 @@
 #include <iostream>
-#include <fstream>
 #include <string>
+#include <vector>
+#include <fstream>
 #include <stdexcept>
+
 using namespace std;
 
-// Абстрактний клас
+//Абстрактний клас Playable
 class Playable {
 public:
-    virtual void showInfo() const = 0;   // чисто віртуальний метод
-    virtual void saveToFile(ofstream& fout) const = 0;
-    virtual ~Playable() {}
+    virtual ~Playable() = default;
+
+    virtual void show() const = 0;
+
+    string getType() const {
+        return "Playable item";
+    }
 };
 
-// Клас Song успадковує Playable
+//Song
 class Song : public Playable {
 private:
     string title;
     string artist;
     int duration;
-    static int songCount;   // статична змінна
+
+    void validate() {
+        if (duration <= 0)
+            throw invalid_argument("Duration must be positive!");
+    }
 
 public:
-    Song(string t, string a, int d) {
-        if (d <= 0) throw invalid_argument("Duration must be positive!");
-        title = t;
-        artist = a;
-        duration = d;
-        songCount++;
+    static int songsCreated;
+
+    Song(string t, string a, int d)
+        : title(t), artist(a), duration(d)
+    {
+        validate();
+        songsCreated++;
     }
 
-    void showInfo() const override {
-        cout << title << " — " << artist << " (" << duration << " sec)\n";
+    Song(const Song& other)
+        : title(other.title), artist(other.artist), duration(other.duration)
+    {
     }
 
-    void saveToFile(ofstream& fout) const override {
-        fout << title << "\n" << artist << "\n" << duration << "\n";
+    const string& getTitle() const { return title; }
+    const string& getArtist() const { return artist; }
+    int getDuration() const { return duration; }
+
+    void show() const override {
+        cout << "Title: " << title
+            << " | Artist: " << artist
+            << " | Duration: " << duration << " sec\n";
     }
 
-    static int getSongCount() { return songCount; }
+    string getType() const {
+        return "Song";
+    }
 };
 
-int Song::songCount = 0;
+int Song::songsCreated = 0;
 
+
+//Playlist
 class Playlist {
 private:
+    vector<Playable*> items;
     string filename;
 
 public:
-    Playlist(string fn) : filename(fn) {
-        ofstream f(filename, ios::app);
-        if (!f.is_open()) throw runtime_error("Cannot open file!");
+    Playlist(const string& file) : filename(file) {
+        load(); 
     }
 
-    void addSong(const Song& s) {
-        ofstream fout(filename, ios::app);
-        if (!fout.is_open()) throw runtime_error("Cannot write to file!");
-        s.saveToFile(fout);
-        fout.close();
-        cout << "Song added successfully.\n";
+    ~Playlist() {
+        for (auto p : items) delete p;
     }
 
-    void showAll() {
+    void load() {
         ifstream fin(filename);
-        if (!fin.is_open()) throw runtime_error("Cannot read file!");
+
+        if (!fin.is_open()) {
+            ofstream create(filename);
+            return;
+        }
 
         string title, artist;
         int duration;
-        int i = 1;
-        cout << "=== Playlist ===\n";
+
         while (getline(fin, title)) {
-            if (title.empty()) continue;
-            getline(fin, artist);
-            fin >> duration;
+            if (!getline(fin, artist)) break;
+            if (!(fin >> duration)) break;
             fin.ignore();
-            try {
-                Song s(title, artist, duration);
-                cout << i++ << ". ";
-                s.showInfo(); // поліморфний виклик
-            }
-            catch (exception& e) {
-                cout << "Bad song data: " << e.what() << "\n";
-            }
+
+            items.push_back(new Song(title, artist, duration));
         }
-        cout << "Total songs: " << Song::getSongCount() << "\n";
-        fin.close();
+    }
+
+    void save() {
+        ofstream fout(filename);
+        for (auto p : items) {
+            const Song* s = dynamic_cast<const Song*>(p);
+            if (!s) continue;
+
+            fout << s->getTitle() << "\n";
+            fout << s->getArtist() << "\n";
+            fout << s->getDuration() << "\n";
+        }
+    }
+
+    void addSong(const Playable& p) {
+        const Song* s = dynamic_cast<const Song*>(&p);
+        if (!s) throw runtime_error("Invalid playable type (expected Song)!");
+
+        items.push_back(new Song(*s));
+
+        save(); 
+    }
+
+    void showAll() const {
+        if (items.empty())
+            throw runtime_error("Playlist is empty!");
+
+        cout << "\n--- PLAYLIST ---\n";
+        for (auto p : items)
+            p->show();
     }
 };
+
 
 int main() {
     const string filename = "songs.txt";
@@ -109,19 +152,24 @@ int main() {
 
                 cout << "Song title: ";
                 getline(cin, title);
+
                 cout << "Artist: ";
                 getline(cin, artist);
+
                 cout << "Duration (sec): ";
                 while (!(cin >> duration)) {
                     cin.clear();
                     string bad;
                     getline(cin, bad);
-                    cout << "Invalid input. Enter duration in seconds: ";
+                    cout << "Invalid input. Enter duration: ";
                 }
                 cin.ignore();
 
-                Song s(title, artist, duration);
-                pl.addSong(s);
+                Playable* p = new Song(title, artist, duration);
+
+                pl.addSong(*p) // раннє
+
+                delete p;
 
                 cout << "Add another song? (y/n): ";
                 char c;
@@ -131,17 +179,24 @@ int main() {
             }
         }
         else if (mode == 2) {
-            pl.showAll();
+            pl.showAll(); //пізнє
         }
         else {
             cout << "Invalid option.\n";
         }
 
+        cout << "\nSongs created total: " << Song::songsCreated << "\n";
         cout << "Program finished.\n";
     }
-    catch (exception& e) {
-        cerr << "ERROR: " << e.what() << "\n";
-        return 1;
+    catch (invalid_argument& e) {
+        cerr << "Input error: " << e.what() << "\n";
     }
+    catch (runtime_error& e) {
+        cerr << "Runtime problem: " << e.what() << "\n";
+    }
+    catch (exception& e) {
+        cerr << "Unexpected error: " << e.what() << "\n";
+    }
+
     return 0;
 }
